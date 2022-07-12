@@ -1,1 +1,1 @@
-# Machine Learning Senior Project in R
+# Machine Learning Project in R
