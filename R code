@@ -1,0 +1,113 @@
+## Cluster analysis k-means over all government measures
+library(cluster)
+library(fpc)
+library(ggplot2)
+library(factoextra)
+
+AverageIJT= read.csv("Average_IJT.csv", header=T)## reading the file
+attach(AverageIJT)
+AverageIJT2=AverageIJT[,-1]## removing first column
+row.names(AverageIJT2)=AverageIJT[,1]
+data=AverageIJT2[-c(17:23)]### for predictors only in pca and clusters
+## Method for choosing cluster###
+fviz_nbclust(scale(data), kmeans, method = "wss")## Elbow method. suggests 2 clusters or 5
+fviz_nbclust(scale(data), kmeans, method = "silhouette")## Average silhouette method. suggest 2 clusters 
+k2=kmeans(scale(data), 2, nstart=20)## performing the K-means clustering (k=2) 
+## scale() will scale the data and "nstart=20" we start the search at n=20, large value for an undesirable local minimum##
+k2 # list different states and their cluster
+plotcluster(scale(data), k2$cluster)### plotting the clusters. 
+fviz_cluster(k2, data = scale(data))## plotting the clusster with names
+k5=kmeans(scale(data), 5, nstart=20)## performing the K-means clustering (k=5)
+fviz_cluster(k5, data = scale(data))## plotting the clusster with names(k=5)
+
+## Principal Component Analysis on all government measures
+## We use the same data from clustering
+
+pr.out=prcomp(data, scale=TRUE) ## scale=TRUE to have standard deviation one
+names(pr.out)# gives names of output prcomp(). "rotation" matrix provides the principal components loadings
+pr.out$rotation
+pr.var=pr.out$sdev^2# produces the variances of the components
+pve=pr.var/sum(pr.var)### produces proportion of variance explained
+par(mfrow=c(1,1))
+plot(pve, xlab="Principal Component", ylab="Proportion of Variance Explained", ylim=c(0,1), type='b')
+plot(cumsum(pve), xlab="Principal Component", ylab="cumulative Proportion of Variance Explained", ylim=c(0,1), type='b')
+##graph of the first two principal components##
+biplot(pr.out, scale=0)## the argument "scale=0" ensures that the arrows are scaled to represent the loadings
+
+
+## Regression tree 
+library(ISLR)
+library(tree)
+AverageIJT4=AverageIJT[-c(1,18:21,23:24)]
+tree.pro <- tree( Average.cases_M ~., AverageIJT4)## predicting average cases based on Gov-Measures
+summary(tree.pro) ## indicates only the variables that have been used in constructing the tree
+plot(tree.pro) ## plotting the tree
+text(tree.pro, pretty = 0)## adding the text on the tree
+cv.pro <- cv.tree(tree.pro) ## We select the most complex tree via cross validation
+plot(cv.pro$size, cv.pro$dev, type = "b")
+
+## Pruning the tree
+prune.pro <- prune.tree(tree.pro, best = 4) ## prune to 4 terminal nodes
+plot(prune.pro)
+text(prune.pro, pretty = 0)
+
+## Regression tree using training and test sets
+library(ISLR)
+set.seed(50)
+train <- sample(1:nrow(AverageIJT4), nrow(AverageIJT4)*.80) ## splitting the data into training(90%) and test set (10%)
+tree.pro1 <- tree( Average.cases_M ~., AverageIJT4, subset = train) ## fitting a regression tree on training set
+summary(tree.pro1)
+###
+plot(tree.pro1)
+text(tree.pro1, pretty = 0)
+###
+cv.pro1 <- cv.tree(tree.pro1)
+plot(cv.pro1$size, cv.pro1$dev, type = "b")
+
+## Pruning the tree
+
+prune.pro1 <- prune.tree(tree.pro1, best = 2) ## prune to 2 terminal nodes
+plot(prune.pro1)
+text(prune.pro1, pretty = 0)
+
+## making prediction on the test set and computing the test error
+yhat <- predict(tree.pro1, newdata = AverageIJT4[-train, ])
+AverageIJT4.test <- AverageIJT4[-train, "Average.cases_M"]
+plot(yhat, AverageIJT4.test) ## plotting the predicted values
+abline(0, 1)
+mean((yhat - AverageIJT4.test)^2) ## computing the mean squared error of test (Test MSE)
+
+
+## Bagging and Random Forests
+## A random sample of "m' predictors is chosen as a split candidates from the full set of "p" predictors
+## For random forest, we typically choose m=sqrt(p), which is better than bagging if we have a large number of predictors that are correlated
+
+## Bagging is a special case of random forest when m=p
+library(randomForest)
+set.seed(50)
+train <- sample(1:nrow(AverageIJT4), nrow(AverageIJT4)*.80) 
+##fitting the model
+bag.project <- randomForest(Average.cases_M ~., data = AverageIJT4,
+    subset = train, mtry = 16, importance = TRUE) ## since we have 16 predictors(m=p)
+bag.project ## for output 
+
+importance(bag.project) 
+varImpPlot(bag.project)
+
+
+## prediction for bagging and calculation of test MSE
+yhat.bag <- predict(bag.project, newdata = AverageIJT4[-train, ]) 
+plot(yhat.bag, yhat.bag <- predict(bag.project, newdata = AverageIJT4[-train, ]) 
+plot(yhat.bag, AverageIJT4.test)
+abline(0, 1)
+mean((yhat.bag - AverageIJT4.test)^2) ## Test MSE
+
+##  Random forest
+
+set.seed(50)
+rf.project <- randomForest(Average.cases_M ~ ., data = AverageIJT4,
+    subset = train, mtry = 6, importance = TRUE)## since we have m=p/3
+yhat.rf <- predict(rf.project, newdata = AverageIJT4[-train, ])
+mean((yhat.rf - AverageIJT4.test)^2) ## Test MSE
+importance(rf.project) 
+varImpPlot(rf.project)
